@@ -1,5 +1,6 @@
 (() => {
   const byId = (id) => document.getElementById(id);
+  const isPopup = new URLSearchParams(location.search).has("popup");
 
   let allTabs = [];
   let filtered = []; // array of { tab, score, titleIndices }
@@ -239,11 +240,16 @@
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
-  function switchToTab(tab) {
-    browser.runtime.sendMessage({ type: "SWITCH_TO_TAB", tabId: tab.id, windowId: tab.windowId });
+  async function switchToTab(tab) {
+    await browser.runtime.sendMessage({ type: "SWITCH_TO_TAB", tabId: tab.id, windowId: tab.windowId });
+    if (isPopup) window.close();
   }
 
   function closeOverlay() {
+    if (isPopup) {
+      window.close();
+      return;
+    }
     const root = byId("tab-finder-root");
     root.classList.add("tf-closing");
     root.addEventListener("animationend", () => {
@@ -261,6 +267,8 @@
   }
 
   // ── Entry point ───────────────────────────────────────────────────────────
+
+  if (isPopup) document.documentElement.classList.add("tf-popup");
 
   byId("tf-backdrop").addEventListener("click", closeOverlay);
   byId("tf-input").addEventListener("input", onInput);

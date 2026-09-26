@@ -234,6 +234,31 @@ kbd {
   min-width: 20px;
 }
 
+/* ── Toolbar popup ──────────────────────────────────────────────────── */
+/* Same modal, minus the overlay chrome: Firefox draws the panel around it. */
+.tf-popup,
+.tf-popup body {
+  background: #18181b;
+}
+
+.tf-popup #tf-backdrop {
+  display: none;
+}
+
+.tf-popup #tab-finder-root {
+  position: static;
+  padding-top: 0;
+  animation: none;
+}
+
+.tf-popup #tf-modal {
+  max-width: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  animation: none;
+}
+
 /* ── Animations ─────────────────────────────────────────────────────── */
 @keyframes tf-fade-in {
   from {
