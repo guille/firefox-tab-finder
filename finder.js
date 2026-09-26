@@ -39,17 +39,30 @@
     return { matched: true, score, indices };
   }
 
-  // ── Highlighted HTML ──────────────────────────────────────────────────────
+  // ── DOM helpers ───────────────────────────────────────────────────────────
+
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  // ── Highlighted title ─────────────────────────────────────────────────────
 
   function buildHighlight(text, indices) {
-    if (!indices || indices.length === 0) return escapeHtml(text);
+    const frag = document.createDocumentFragment();
     const matchSet = new Set(indices);
-    let html = "";
-    for (let i = 0; i < text.length; i++) {
-      const ch = escapeHtml(text[i]);
-      html += matchSet.has(i) ? `<mark>${ch}</mark>` : ch;
+    let i = 0;
+    while (i < text.length) {
+      const marked = matchSet.has(i);
+      let j = i + 1;
+      while (j < text.length && matchSet.has(j) === marked) j++;
+      const run = text.slice(i, j);
+      frag.append(marked ? el("mark", null, run) : run);
+      i = j;
     }
-    return html.replace(/<\/mark><mark>/g, "");
+    return frag;
   }
 
   // ── Favicon / letter avatar ───────────────────────────────────────────────
@@ -65,78 +78,60 @@
     return AVATAR_COLORS[h % AVATAR_COLORS.length];
   }
 
-  function faviconHtml(tab) {
+  function buildFavicon(tab) {
     const letter = (tab.title || tab.url || "?")[0].toUpperCase();
     let domain = "";
     try { domain = new URL(tab.url).hostname; } catch { domain = tab.title || ""; }
-    const color = avatarColor(domain || tab.title);
 
-    const placeholder = `<span class="tf-favicon tf-avatar" style="background:${color}">${escapeHtml(letter)}</span>`;
+    const avatar = el("span", "tf-favicon tf-avatar", letter);
+    avatar.style.background = avatarColor(domain || tab.title);
 
     if (!tab.favIconUrl || tab.favIconUrl.startsWith("chrome://") || tab.favIconUrl.startsWith("moz-extension://")) {
-      return placeholder;
+      return avatar;
     }
 
-    return `<img class="tf-favicon" src="${escapeHtml(tab.favIconUrl)}" width="16" height="16"
-      data-letter="${escapeHtml(letter)}" data-color="${escapeHtml(color)}" />`;
-  }
-
-  function patchFaviconErrors(container) {
-    container.querySelectorAll("img.tf-favicon").forEach((img) => {
-      img.addEventListener("error", () => {
-        const span = document.createElement("span");
-        span.className = "tf-favicon tf-avatar";
-        span.style.background = img.dataset.color || "#555";
-        span.textContent = img.dataset.letter || "?";
-        img.replaceWith(span);
-      }, { once: true });
-    });
+    const img = el("img", "tf-favicon");
+    img.width = img.height = 16;
+    img.addEventListener("error", () => img.replaceWith(avatar), { once: true });
+    img.src = tab.favIconUrl;
+    return img;
   }
 
   // ── Rendering ─────────────────────────────────────────────────────────────
 
   // Full rebuild — only called when the filtered list itself changes (on input).
   function renderList() {
-    const list    = byId("tf-list");
-    const countEl = byId("tf-count");
-    if (!list) return;
+    const list = byId("tf-list");
 
-    countEl.textContent = `${filtered.length} tab${filtered.length !== 1 ? "s" : ""}`;
+    byId("tf-count").textContent = `${filtered.length} tab${filtered.length !== 1 ? "s" : ""}`;
 
     if (filtered.length === 0) {
-      list.innerHTML = `<li class="tf-empty">No tabs match</li>`;
+      list.replaceChildren(el("li", "tf-empty", "No tabs match"));
       return;
     }
 
-    list.innerHTML = filtered.map(({ tab, titleIndices }, i) => {
+    list.replaceChildren(...filtered.map(({ tab, titleIndices }, i) => {
       const isSelected = i === selectedIndex;
-      const title = buildHighlight(tab.title, titleIndices);
-      const url   = escapeHtml(truncateUrl(tab.url));
-      return `
-        <li class="tf-item${isSelected ? " tf-selected" : ""}"
-          role="option" aria-selected="${isSelected}" data-index="${i}">
-          ${faviconHtml(tab)}
-          <span class="tf-text">
-            <span class="tf-title">${title}</span>
-            <span class="tf-url">${url}</span>
-          </span>
-          ${tab.active ? `<span class="tf-badge">current</span>` : ""}
-        </li>`;
-    }).join("");
+      const item = el("li", isSelected ? "tf-item tf-selected" : "tf-item");
+      item.setAttribute("role", "option");
+      item.setAttribute("aria-selected", String(isSelected));
+      item.dataset.index = i;
+      item.addEventListener("click", () => switchToTab(tab));
 
-    patchFaviconErrors(list);
+      const title = el("span", "tf-title");
+      title.append(buildHighlight(tab.title, titleIndices));
+      const text = el("span", "tf-text");
+      text.append(title, el("span", "tf-url", truncateUrl(tab.url)));
 
-    list.querySelectorAll(".tf-item").forEach((el) => {
-      el.addEventListener("click", () => {
-        const idx = parseInt(el.dataset.index, 10);
-        switchToTab(filtered[idx].tab);
-      });
-    });
+      item.append(buildFavicon(tab), text);
+      if (tab.active) item.append(el("span", "tf-badge", "current"));
+      return item;
+    }));
 
     list.querySelector(".tf-selected")?.scrollIntoView({ block: "nearest" });
   }
 
-  // Cheap selection move — only swaps a CSS class and scrolls, never rebuilds innerHTML.
+  // Cheap selection move — only swaps a CSS class and scrolls, never rebuilds the list.
   // Called on every arrow/page key press.
   function moveSelection(newIndex) {
     const list = byId("tf-list");
@@ -257,12 +252,6 @@
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
-
-  function escapeHtml(str) {
-    return String(str)
-      .replace(/&/g, "&amp;").replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-  }
 
   function truncateUrl(url) {
     try {
