@@ -1,0 +1,33 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="finder.css">
+</head>
+<body>
+  <div id="tab-finder-root" role="dialog" aria-modal="true" aria-label="Tab search">
+    <div id="tf-backdrop"></div>
+    <div id="tf-modal">
+      <div id="tf-search-wrap">
+        <span id="tf-icon">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" stroke-width="1.5"/>
+            <line x1="10.5" y1="10.5" x2="14" y2="14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </span>
+        <input id="tf-input" type="text" placeholder="Search tabs…"
+          autocomplete="off" spellcheck="false">
+        <span id="tf-count"></span>
+      </div>
+      <ul id="tf-list" role="listbox"></ul>
+      <div id="tf-footer">
+        <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+        <span><kbd>PgUp</kbd><kbd>PgDn</kbd> page</span>
+        <span><kbd>↵</kbd> switch</span>
+        <span><kbd>Esc</kbd> close</span>
+      </div>
+    </div>
+  </div>
+  <script src="finder.js"></script>
+</body>
+</html>
