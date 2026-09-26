@@ -2,42 +2,118 @@
   const byId = (id) => document.getElementById(id);
   const isPopup = new URLSearchParams(location.search).has("popup");
 
-  let allTabs = [];
-  let filtered = []; // array of { tab, score, titleIndices }
+  const MAX_SHOWN = 100;
+
+  let entries = [];  // one per tab: { tab, title, url }, each field from prepareField
+  let filtered = []; // entries matching `tokens`, best first
+  let tokens = [];
+  let lastQuery = null;
   let selectedIndex = 0;
 
   // ── Fuzzy search ──────────────────────────────────────────────────────────
+  // fzy's algorithm (github.com/jhawthorn/fzy/blob/master/ALGORITHM.md): a DP
+  // over query × text finds the best-scoring alignment, not just the first.
 
-  function fuzzyMatch(query, text) {
-    const q = query.toLowerCase();
-    const t = text.toLowerCase();
+  const SCORE_GAP_LEADING   = -0.005;
+  const SCORE_GAP_TRAILING  = -0.005;
+  const SCORE_GAP_INNER     = -0.01;
+  const SCORE_CONSECUTIVE   = 1.0;
+  const SCORE_MATCH_SLASH   = 0.9;
+  const SCORE_MATCH_WORD    = 0.8;
+  const SCORE_MATCH_CAPITAL = 0.7;
+  const SCORE_MATCH_DOT     = 0.6;
 
-    if (!q) return { matched: true, score: 0, indices: [] };
+  // Folds per UTF-16 unit so indices into the result are valid in `text`.
+  function foldCase(text) {
+    let out = "";
+    for (let i = 0; i < text.length; i++) {
+      const lower = text[i].toLowerCase();
+      out += lower.length === 1 ? lower : text[i];
+    }
+    return out;
+  }
+
+  function prepareField(text) {
+    const bonus = new Float64Array(text.length);
+    let prev = "/";
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (prev === "/") bonus[i] = SCORE_MATCH_SLASH;
+      else if (/[\s\-_:]/.test(prev)) bonus[i] = SCORE_MATCH_WORD;
+      else if (prev === ".") bonus[i] = SCORE_MATCH_DOT;
+      else if (prev !== prev.toUpperCase() && c !== c.toLowerCase()) bonus[i] = SCORE_MATCH_CAPITAL;
+      prev = c;
+    }
+    return { text, folded: foldCase(text), bonus };
+  }
+
+  // Reused across calls: D[i*m+j] is the best score with query[i] matched at
+  // text[j]; M[i*m+j] the best with query[..i] matched anywhere in text[..j].
+  let D = new Float64Array(0);
+  let M = new Float64Array(0);
+
+  function align(query, field) {
+    const n = query.length;
+    const m = field.folded.length;
+    const text = field.folded;
 
     let qi = 0;
-    const indices = [];
-    for (let ti = 0; ti < t.length && qi < q.length; ti++) {
-      if (t[ti] === q[qi]) { indices.push(ti); qi++; }
-    }
-    if (qi < q.length) return { matched: false, score: -Infinity, indices: [] };
+    for (let j = 0; j < m && qi < n; j++) if (text[j] === query[qi]) qi++;
+    if (qi < n) return -Infinity;
 
-    let score = 0;
-    let run = 1;
-    for (let i = 1; i < indices.length; i++) {
-      if (indices[i] === indices[i - 1] + 1) { run++; score += run * 10; }
-      else { run = 1; }
+    if (D.length < n * m) {
+      D = new Float64Array(n * m);
+      M = new Float64Array(n * m);
     }
 
-    if (indices[0] === 0) score += 20;
-    const boundary = /[\s\-_./\\:]/;
-    for (const idx of indices) {
-      if (idx === 0 || boundary.test(t[idx - 1])) score += 15;
+    for (let i = 0; i < n; i++) {
+      const gap = i === n - 1 ? SCORE_GAP_TRAILING : SCORE_GAP_INNER;
+      let prev = -Infinity;
+      for (let j = 0; j < m; j++) {
+        const k = i * m + j;
+        if (query[i] === text[j]) {
+          let score = -Infinity;
+          if (i === 0) score = j * SCORE_GAP_LEADING + field.bonus[j];
+          else if (j > 0) score = Math.max(M[k - m - 1] + field.bonus[j], D[k - m - 1] + SCORE_CONSECUTIVE);
+          D[k] = score;
+          M[k] = prev = Math.max(score, prev + gap);
+        } else {
+          D[k] = -Infinity;
+          M[k] = prev = prev + gap;
+        }
+      }
     }
+    return M[n * m - 1];
+  }
 
-    if (t.includes(q)) score += 100;
-    score -= indices[indices.length - 1];
+  function positions(query, field) {
+    if (align(query, field) === -Infinity) return [];
+    const m = field.folded.length;
+    const pos = [];
+    let matchRequired = false;
+    for (let i = query.length - 1, j = m - 1; i >= 0; i--) {
+      for (; j >= 0; j--) {
+        const k = i * m + j;
+        if (D[k] !== -Infinity && (matchRequired || D[k] === M[k])) {
+          matchRequired = i > 0 && j > 0 && M[k] === D[k - m - 1] + SCORE_CONSECUTIVE;
+          pos.push(j--);
+          break;
+        }
+      }
+    }
+    return pos;
+  }
 
-    return { matched: true, score, indices };
+  // Each token is highlighted in whichever field it matches best.
+  function highlights(entry) {
+    const title = new Set();
+    const url = new Set();
+    for (const token of tokens) {
+      const inTitle = align(token, entry.title) >= align(token, entry.url);
+      const [field, set] = inTitle ? [entry.title, title] : [entry.url, url];
+      for (const p of positions(token, field)) set.add(p);
+    }
+    return { title, url };
   }
 
   // ── DOM helpers ───────────────────────────────────────────────────────────
@@ -49,11 +125,10 @@
     return node;
   }
 
-  // ── Highlighted title ─────────────────────────────────────────────────────
+  // ── Highlighted text ──────────────────────────────────────────────────────
 
-  function buildHighlight(text, indices) {
+  function buildHighlight(text, matchSet) {
     const frag = document.createDocumentFragment();
-    const matchSet = new Set(indices);
     let i = 0;
     while (i < text.length) {
       const marked = matchSet.has(i);
@@ -104,14 +179,19 @@
   function renderList() {
     const list = byId("tf-list");
 
-    byId("tf-count").textContent = `${filtered.length} tab${filtered.length !== 1 ? "s" : ""}`;
+    const total = filtered.length;
+    byId("tf-count").textContent = total > MAX_SHOWN
+      ? `${MAX_SHOWN} of ${total} tabs`
+      : `${total} tab${total !== 1 ? "s" : ""}`;
 
-    if (filtered.length === 0) {
+    if (total === 0) {
       list.replaceChildren(el("li", "tf-empty", "No tabs match"));
       return;
     }
 
-    list.replaceChildren(...filtered.map(({ tab, titleIndices }, i) => {
+    list.replaceChildren(...filtered.slice(0, MAX_SHOWN).map((entry, i) => {
+      const { tab } = entry;
+      const marks = highlights(entry);
       const isSelected = i === selectedIndex;
       const item = el("li", isSelected ? "tf-item tf-selected" : "tf-item");
       item.setAttribute("role", "option");
@@ -120,9 +200,11 @@
       item.addEventListener("click", () => switchToTab(tab));
 
       const title = el("span", "tf-title");
-      title.append(buildHighlight(tab.title, titleIndices));
+      title.append(buildHighlight(entry.title.text, marks.title));
+      const url = el("span", "tf-url");
+      url.append(buildHighlight(entry.url.text, marks.url));
       const text = el("span", "tf-text");
-      text.append(title, el("span", "tf-url", truncateUrl(tab.url)));
+      text.append(title, url);
 
       item.append(buildFavicon(tab), text);
       if (tab.active) item.append(el("span", "tf-badge", "current"));
@@ -138,7 +220,7 @@
     const list = byId("tf-list");
     if (!list || filtered.length === 0) return;
 
-    newIndex = Math.max(0, Math.min(newIndex, filtered.length - 1));
+    newIndex = Math.max(0, Math.min(newIndex, Math.min(filtered.length, MAX_SHOWN) - 1));
     if (newIndex === selectedIndex) return;
 
     const prev = list.querySelector(".tf-selected");
@@ -166,32 +248,36 @@
 
   // ── Filtering ─────────────────────────────────────────────────────────────
 
+  const byRecency = (a, b) => b.tab.lastAccessed - a.tab.lastAccessed;
+
+  // Every whitespace-separated token must match the title or the URL.
   function filterTabs(query) {
-    const q = query.trim();
+    const q = foldCase(query.trim());
+    tokens = q ? q.split(/\s+/) : [];
+    selectedIndex = 0;
 
     if (!q) {
-      filtered = allTabs.map((tab) => ({
-        tab, score: tab.active ? 1 : 0, titleIndices: [],
-      }));
-      filtered.sort((a, b) => b.score - a.score);
-      selectedIndex = 0;
+      filtered = [...entries].sort((a, b) => b.tab.active - a.tab.active || byRecency(a, b));
+      lastQuery = q;
       return;
     }
 
-    const results = [];
-    for (const tab of allTabs) {
-      const byTitle = fuzzyMatch(q, tab.title);
-      const byUrl   = fuzzyMatch(q, truncateUrl(tab.url));
-      if (!byTitle.matched && !byUrl.matched) continue;
+    // Extending the query can only drop matches, never add them.
+    const candidates = lastQuery !== null && q.startsWith(lastQuery) ? filtered : entries;
+    lastQuery = q;
 
-      const score = Math.max(byTitle.score, byUrl.score);
-      const titleIndices = byTitle.matched ? byTitle.indices : [];
-      results.push({ tab, score, titleIndices });
+    const results = [];
+    for (const entry of candidates) {
+      let score = 0;
+      for (const token of tokens) {
+        score += Math.max(align(token, entry.title), align(token, entry.url));
+        if (score === -Infinity) break;
+      }
+      if (score !== -Infinity) results.push({ entry, score });
     }
 
-    results.sort((a, b) => b.score - a.score);
-    filtered = results;
-    selectedIndex = 0;
+    results.sort((a, b) => b.score - a.score || byRecency(a.entry, b.entry));
+    filtered = results.map((r) => r.entry);
   }
 
   // ── Events ────────────────────────────────────────────────────────────────
@@ -276,7 +362,12 @@
   byId("tf-input").focus();
 
   browser.runtime.sendMessage({ type: "GET_TABS" }).then((tabs) => {
-    allTabs = tabs;
+    entries = tabs.map((tab) => ({
+      tab,
+      title: prepareField(tab.title),
+      url:   prepareField(truncateUrl(tab.url)),
+    }));
+    lastQuery = null;
     filterTabs(byId("tf-input").value);
     renderList();
   });

@@ -34,6 +34,7 @@ browser.runtime.onMessage.addListener(async (message, sender) => {
         url:        t.url        || "",
         favIconUrl: t.favIconUrl || "",
         active:     t.id === currentId,
+        lastAccessed: t.lastAccessed ?? 0,
       }));
     }
     case "SWITCH_TO_TAB":
