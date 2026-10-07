@@ -3,5 +3,5 @@ description = "Package the extension as an unsigned .xpi"
 run = """
 mkdir -p dist
 rm -f dist/tab-finder.xpi
-zip -X dist/tab-finder.xpi manifest.json background.js inject.js finder.html finder.js finder.css
+zip -X dist/tab-finder.xpi manifest.json background.js inject.js finder.html finder.js finder.css icon.svg
 """
