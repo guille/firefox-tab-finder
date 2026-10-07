@@ -359,6 +359,9 @@
   byId("tf-backdrop").addEventListener("click", closeOverlay);
   byId("tf-input").addEventListener("input", onInput);
   document.addEventListener("keydown", onKeyDown);
+  // focus() is a no-op until the frame has been laid out, which on a busy
+  // page may not have happened yet; the frame gets focus once it's loaded.
+  window.addEventListener("focus", () => byId("tf-input").focus());
   byId("tf-input").focus();
 
   browser.runtime.sendMessage({ type: "GET_TABS" }).then((tabs) => {
