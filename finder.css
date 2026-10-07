@@ -1,4 +1,10 @@
 /* ── Reset ──────────────────────────────────────────────────────────── */
+/* Firefox paints an iframe opaque when its color-scheme differs from the
+   embedding element's, so this must match the one inject.js sets. */
+:root {
+  color-scheme: dark;
+}
+
 /* Transparent so the page shows through the frame behind the backdrop. */
 html,
 body {
