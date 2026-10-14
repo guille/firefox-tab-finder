@@ -178,11 +178,51 @@ body {
 }
 
 .tf-url {
+  min-width: 0;
   font-size: 11px;
   color: #52525b;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.tf-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Keyed by Firefox's tab group color names. */
+.tf-group {
+  --group: #8f8f9d;
+  flex-shrink: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--group);
+  background: color-mix(in srgb, var(--group) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--group) 35%, transparent);
+  border-radius: 4px;
+  padding: 0 5px;
+}
+
+.tf-group[data-color="blue"]   { --group: #6fb2ff; }
+.tf-group[data-color="purple"] { --group: #c69cff; }
+.tf-group[data-color="cyan"]   { --group: #5fd8e6; }
+.tf-group[data-color="orange"] { --group: #ffa25f; }
+.tf-group[data-color="yellow"] { --group: #ffd567; }
+.tf-group[data-color="pink"]   { --group: #ff8ac9; }
+.tf-group[data-color="green"]  { --group: #6dd58c; }
+.tf-group[data-color="gray"],
+.tf-group[data-color="grey"]   { --group: #a7a7b3; }
+.tf-group[data-color="red"]    { --group: #ff7a7a; }
+
+.tf-group mark {
+  color: #fff;
 }
 
 .tf-item.tf-selected .tf-url {

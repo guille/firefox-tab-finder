@@ -22,11 +22,13 @@ browser.commands.onCommand.addListener(async (command, tab) => {
 browser.runtime.onMessage.addListener(async (message, sender) => {
   switch (message.type) {
     case "GET_TABS": {
-      const [tabs, [active]] = await Promise.all([
+      const [tabs, [active], groups] = await Promise.all([
         browser.tabs.query({}),
         browser.tabs.query({ active: true, currentWindow: true }),
+        browser.tabGroups?.query({}) ?? [],
       ]);
       const currentId = (sender.tab ?? active)?.id;
+      const groupById = new Map(groups.map((g) => [g.id, { title: g.title || "", color: g.color }]));
       return tabs.map((t) => ({
         id:         t.id,
         windowId:   t.windowId,
@@ -35,6 +37,7 @@ browser.runtime.onMessage.addListener(async (message, sender) => {
         favIconUrl: t.favIconUrl || "",
         active:     t.id === currentId,
         lastAccessed: t.lastAccessed ?? 0,
+        group:      groupById.get(t.groupId) ?? null,
       }));
     }
     case "SWITCH_TO_TAB":

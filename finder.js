@@ -4,7 +4,8 @@
 
   const MAX_SHOWN = 100;
 
-  let entries = [];  // one per tab: { tab, title, url }, each field from prepareField
+  const FIELDS = ["title", "url", "group"];
+  let entries = [];  // one per tab: { tab, ...FIELDS }, each field from prepareField
   let filtered = []; // entries matching `tokens`, best first
   let tokens = [];
   let lastQuery = null;
@@ -104,16 +105,24 @@
     return pos;
   }
 
+  function bestField(token, entry) {
+    let best = FIELDS[0];
+    let bestScore = -Infinity;
+    for (const name of FIELDS) {
+      const score = align(token, entry[name]);
+      if (score > bestScore) [best, bestScore] = [name, score];
+    }
+    return [best, bestScore];
+  }
+
   // Each token is highlighted in whichever field it matches best.
   function highlights(entry) {
-    const title = new Set();
-    const url = new Set();
+    const marks = Object.fromEntries(FIELDS.map((name) => [name, new Set()]));
     for (const token of tokens) {
-      const inTitle = align(token, entry.title) >= align(token, entry.url);
-      const [field, set] = inTitle ? [entry.title, title] : [entry.url, url];
-      for (const p of positions(token, field)) set.add(p);
+      const [name] = bestField(token, entry);
+      for (const p of positions(token, entry[name])) marks[name].add(p);
     }
-    return { title, url };
+    return marks;
   }
 
   // ── DOM helpers ───────────────────────────────────────────────────────────
@@ -203,8 +212,16 @@
       title.append(buildHighlight(entry.title.text, marks.title));
       const url = el("span", "tf-url");
       url.append(buildHighlight(entry.url.text, marks.url));
+      const meta = el("span", "tf-meta");
+      if (tab.group) {
+        const group = el("span", "tf-group");
+        group.dataset.color = tab.group.color;
+        group.append(buildHighlight(entry.group.text || "Unnamed group", marks.group));
+        meta.append(group);
+      }
+      meta.append(url);
       const text = el("span", "tf-text");
-      text.append(title, url);
+      text.append(title, meta);
 
       item.append(buildFavicon(tab), text);
       if (tab.active) item.append(el("span", "tf-badge", "current"));
@@ -250,7 +267,7 @@
 
   const byRecency = (a, b) => b.tab.lastAccessed - a.tab.lastAccessed;
 
-  // Every whitespace-separated token must match the title or the URL.
+  // Every whitespace-separated token must match some field.
   function filterTabs(query) {
     const q = foldCase(query.trim());
     tokens = q ? q.split(/\s+/) : [];
@@ -270,7 +287,7 @@
     for (const entry of candidates) {
       let score = 0;
       for (const token of tokens) {
-        score += Math.max(align(token, entry.title), align(token, entry.url));
+        score += bestField(token, entry)[1];
         if (score === -Infinity) break;
       }
       if (score !== -Infinity) results.push({ entry, score });
@@ -369,6 +386,7 @@
       tab,
       title: prepareField(tab.title),
       url:   prepareField(truncateUrl(tab.url)),
+      group: prepareField(tab.group?.title ?? ""),
     }));
     lastQuery = null;
     filterTabs(byId("tf-input").value);
