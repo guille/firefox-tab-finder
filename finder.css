@@ -102,6 +102,10 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+#tf-count.tf-flash {
+  color: #60a5fa;
+}
+
 /* ── List ───────────────────────────────────────────────────────────── */
 #tf-list {
   list-style: none;

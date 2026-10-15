@@ -10,6 +10,7 @@
   let tokens = [];
   let lastQuery = null;
   let selectedIndex = 0;
+  let flashTimer = null;
 
   // ── Fuzzy search ──────────────────────────────────────────────────────────
   // fzy's algorithm (github.com/jhawthorn/fzy/blob/master/ALGORITHM.md): a DP
@@ -184,16 +185,30 @@
 
   // ── Rendering ─────────────────────────────────────────────────────────────
 
+  function renderCount() {
+    const total = filtered.length;
+    const count = byId("tf-count");
+    count.classList.remove("tf-flash");
+    count.textContent = total > MAX_SHOWN
+      ? `${MAX_SHOWN} of ${total} tabs`
+      : `${total} tab${total !== 1 ? "s" : ""}`;
+  }
+
+  function flashCount(text) {
+    clearTimeout(flashTimer);
+    const count = byId("tf-count");
+    count.textContent = text;
+    count.classList.add("tf-flash");
+    flashTimer = setTimeout(renderCount, 1200);
+  }
+
   // Full rebuild — only called when the filtered list itself changes (on input).
   function renderList() {
     const list = byId("tf-list");
 
-    const total = filtered.length;
-    byId("tf-count").textContent = total > MAX_SHOWN
-      ? `${MAX_SHOWN} of ${total} tabs`
-      : `${total} tab${total !== 1 ? "s" : ""}`;
+    renderCount();
 
-    if (total === 0) {
+    if (filtered.length === 0) {
       list.replaceChildren(el("li", "tf-empty", "No tabs match"));
       return;
     }
@@ -338,6 +353,16 @@
         e.preventDefault();
         if (filtered[selectedIndex]) switchToTab(filtered[selectedIndex].tab);
         break;
+      case "c":
+      case "C": {
+        // Plain Ctrl+C still copies the query when part of it is selected.
+        const input = byId("tf-input");
+        if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) break;
+        if (input.selectionStart !== input.selectionEnd) break;
+        e.preventDefault();
+        if (filtered[selectedIndex]) copyUrl(filtered[selectedIndex].tab);
+        break;
+      }
     }
   }
 
@@ -346,6 +371,15 @@
   async function switchToTab(tab) {
     await browser.runtime.sendMessage({ type: "SWITCH_TO_TAB", tabId: tab.id, windowId: tab.windowId });
     if (isPopup) window.close();
+  }
+
+  async function copyUrl(tab) {
+    try {
+      await navigator.clipboard.writeText(tab.url);
+      flashCount("Copied link");
+    } catch {
+      flashCount("Copy failed");
+    }
   }
 
   function closeOverlay() {
