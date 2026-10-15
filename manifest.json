@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Tab Finder",
-  "version": "1.4",
+  "version": "1.5",
   "description": "Quickly search and switch to any open tab with a keybind.",
   "icons": {
     "48": "icon.svg",

@@ -8,12 +8,13 @@ browser.commands.onCommand.addListener(async (command, tab) => {
     return;
   }
 
-  // Web pages can still refuse injection (AMO, the PDF viewer, reader view).
+  // Web pages can still refuse injection (AMO, the PDF viewer, reader view),
+  // and the overlay can't take focus from browser UI like the URL bar.
+  let shown = false;
   try {
-    await browser.tabs.executeScript({ file: "inject.js" });
-  } catch {
-    await browser.browserAction.openPopup();
-  }
+    [shown] = await browser.tabs.executeScript({ file: "inject.js" });
+  } catch {}
+  if (!shown) await browser.browserAction.openPopup();
 });
 
 // The finder runs in a frame inside the page, where Firefox withholds the tabs

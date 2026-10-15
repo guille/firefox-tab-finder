@@ -1,14 +1,15 @@
 // Injected on demand into the top frame. Re-injection shares this content-script
 // global, so a second run toggles instead of opening another overlay.
+// Evaluates to whether the overlay was handled; false asks for the popup instead.
 (() => {
-  if (window.tabFinderToggle) {
-    window.tabFinderToggle();
-    return;
-  }
+  if (window.tabFinderToggle) return window.tabFinderToggle();
 
   let host = null;
 
   function open() {
+    // The page can't take focus from browser UI such as the URL bar.
+    if (!document.hasFocus()) return false;
+
     host = document.createElement("tab-finder");
     host.style.setProperty("all", "initial", "important");
 
@@ -27,11 +28,13 @@
 
     shadow.append(frame);
     document.documentElement.append(host);
+    return true;
   }
 
   function close() {
     host?.remove();
     host = null;
+    return true;
   }
 
   window.tabFinderToggle = () => (host ? close() : open());
@@ -40,5 +43,5 @@
     if (message.type === "CLOSE_TAB_FINDER") close();
   });
 
-  open();
+  return open();
 })();
